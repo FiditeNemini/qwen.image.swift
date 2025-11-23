@@ -1,10 +1,10 @@
 # Qwen Image Swift
 
-Comming soon.
+Swift port of Qwen Image runs on Apple Silicon Macs using **[mlx-swift](https://github.com/ml-explore/mlx-swift)**.
 
-## Try the Preview CLI
+## Release CLI
 
-The preview CLI can run on a 32 GB machine by using 8-bit quantized model weights pulled from Hugging Face.
+The CLI can run on a 32 GB machine by using 8-bit quantized model weights pulled from Hugging Face.
 
 ### Requirements
 
@@ -13,18 +13,16 @@ The preview CLI can run on a 32 GB machine by using 8-bit quantized model weight
 
 ### Download the CLI
 
-Grab the latest signed `QwenImageCLI` binary from the [0.0.1 preview release](https://github.com/mzbac/qwen.image.swift/releases/tag/0.0.1). The asset is shipped as a zipped bundle; you can automate the download/unzip like this:
+Grab the latest signed `QwenImageCLI` binary from the [0.1.0 release](https://github.com/mzbac/qwen.image.swift/releases/tag/0.1.0). The asset is shipped as a zipped bundle; you can automate the download/unzip like this:
 
 ```bash
-curl -L https://github.com/mzbac/qwen.image.swift/releases/download/0.0.1/qwen.image.macos.arm64.zip \
+curl -L https://github.com/mzbac/qwen.image.swift/releases/download/0.1.0/qwen.image.macos.arm64.zip \
   -o qwen.image.macos.arm64.zip
-unzip -o qwen.image.macos.arm64.zip -d qwen-image-preview
-cd qwen-image-preview
+unzip -o qwen.image.macos.arm64.zip -d qwen-image-cli
+cd qwen-image-cli
 chmod +x QwenImageCLI
 ./QwenImageCLI -h
 ```
-
-The CLI expects `default.metallib` to sit next to the executable, so keep the extracted files together (or move them as a pair) and run the subsequent commands from inside `qwen-image-preview/`. On first launch the CLI automatically pulls any missing weights; once that finishes you can run prompts locally:
 
 ```bash
 ./QwenImageCLI \
@@ -109,6 +107,11 @@ The `examples/` folder contains a few straight-from-the-CLI renders to showcase 
 | 她双手举起，手掌朝向镜头，手指张开，做出一个俏皮的姿势 | “She raises both hands toward the camera, fingers spread, striking a playful pose.” | <img src="images/person4.png" width="120"/> | ![Pose editing](examples/pose_editing.png) |
 
 Feel free to reference these prompts to validate your environment; recreating them should produce similar compositions within minor stochastic differences.
+
+## Acknowledgements
+
+* **[mlx-swift](https://github.com/ml-explore/mlx-swift):** This project is built using the `mlx-swift` library by Apple Machine Learning Research to enable efficient model execution on Apple Silicon.
+* **[Hugging Face Diffusers](https://github.com/huggingface/diffusers):** Implementation logic is referenced from the Diffusers library.
 
 ## License
 
