@@ -544,16 +544,20 @@ struct QwenImageCLIEntry {
     }
 
     let cacheURL = cacheDirectory.map { URL(fileURLWithPath: $0).standardizedFileURL }
+    let reference = LoraReferenceParser.parse(lora)
+    let repoId = reference?.repoId ?? lora
+    let revision = reference?.revision ?? "main"
+    let patterns = LoraReferenceParser.patterns(for: reference?.filePath)
     let options = HubSnapshotOptions(
-      repoId: lora,
-      revision: "main",
-      patterns: ["*.safetensors", "**/*.safetensors"],
+      repoId: repoId,
+      revision: revision,
+      patterns: patterns,
       cacheDirectory: cacheURL,
       hfToken: hfToken,
       offline: offlineMode,
       useBackgroundSession: useBackgroundSession
     )
-    logger.info("Resolving LoRA snapshot for \(lora)")
+    logger.info("Resolving LoRA snapshot for \(repoId) (revision: \(revision))")
     let snapshotRoot = try downloadSnapshot(options: options)
 
     var snapshotIsDir: ObjCBool = false
@@ -561,6 +565,21 @@ struct QwenImageCLIEntry {
       if !snapshotIsDir.boolValue, snapshotRoot.pathExtension == "safetensors" {
         return snapshotRoot
       }
+    }
+
+    if let filePath = reference?.filePath {
+      let trimmedPath = filePath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+      if !trimmedPath.isEmpty {
+        let directURL = snapshotRoot.appending(path: trimmedPath)
+        if fm.fileExists(atPath: directURL.path) {
+          return directURL
+        }
+        let fileName = URL(fileURLWithPath: trimmedPath).lastPathComponent
+        if let match = findSafetensors(named: fileName, in: snapshotRoot) {
+          return match
+        }
+      }
+      fail("LoRA file \(filePath) not found in snapshot at \(snapshotRoot.path)")
     }
 
     let resourceKeys: [URLResourceKey] = [.isDirectoryKey]
@@ -574,6 +593,20 @@ struct QwenImageCLIEntry {
       }
     }
     fail("No .safetensors file found in LoRA snapshot at \(snapshotRoot.path)")
+  }
+
+  private static func findSafetensors(named fileName: String, in root: URL) -> URL? {
+    let resourceKeys: [URLResourceKey] = [.isDirectoryKey]
+    if let enumerator = FileManager.default.enumerator(
+      at: root,
+      includingPropertiesForKeys: resourceKeys,
+      options: [.skipsHiddenFiles]
+    ) {
+      for case let url as URL in enumerator where url.lastPathComponent == fileName {
+        return url
+      }
+    }
+    return nil
   }
 
   private static func prepareOutputDirectory(for url: URL) throws {
@@ -729,7 +762,7 @@ struct QwenImageCLIEntry {
       --height, -H            Image height (default: 1024)
       --seed                  Random seed (optional)
       --model                 HF repo ID (e.g. Qwen/Qwen-Image-Edit-2509) or local snapshot path
-      --lora                  Optional LoRA safetensors path or HF repo ID (e.g. Osrivers/Qwen-Image-Lightning-4steps-V2.0-bf16.safetensors)
+      --lora                  Optional LoRA safetensors path, HF repo ID, or HF file URL (e.g. Osrivers/Qwen-Image-Lightning-4steps-V2.0-bf16.safetensors or repo:file.safetensors)
       --revision              Snapshot revision/tag/commit (used with HF repo IDs; default: main)
       --output, -o            Output PNG path (default: qwen-image.png)
 

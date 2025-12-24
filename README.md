@@ -116,9 +116,42 @@ Key flags:
 - `--negative-prompt` lets you suppress artifacts (e.g. "blurry, low contrast").
 - `--guidance`, `--true-cfg-scale`, and `--steps` provide full control over the diffusion schedule.
 - `--model`, `--revision`, and `--lora` point the CLI at Hugging Face repos or local safetensors.
+- When a LoRA repo contains multiple weights, pass a specific file via `--lora owner/repo:filename.safetensors` or a Hugging Face file URL.
 - `--reference-image` can be supplied multiple times for image-to-image or pose-guided edits.
 
 Run `./QwenImageCLI -h` for the exhaustive list and keep an eye on the release notes for newly added knobs.
+
+## LoRA Weight Files
+
+When a LoRA repo contains multiple weights, you can select an exact file using either a `repo:file` selector or a Hugging Face file URL.
+
+### Repo + weight selector
+
+```bash
+./QwenImageCLI \
+  --model Qwen/Qwen-Image-Edit-2511 \
+  --true-cfg-scale 1.0 \
+  --guidance 1.0 \
+  --steps 4 \
+  --lora lightx2v/Qwen-Image-Edit-2511-Lightning:Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors \
+  --reference-image images/person4.png \
+  --prompt "她双手举起，手掌朝向镜头，手指张开，做出一个俏皮的姿势" \
+  --output outputs/pose_edit_2511_4steps.png
+```
+
+### Hugging Face file URL
+
+```bash
+./QwenImageCLI \
+  --model Qwen/Qwen-Image-Edit-2511 \
+  --true-cfg-scale 1.0 \
+  --guidance 1.0 \
+  --steps 4 \
+  --lora https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning/blob/main/Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors \
+  --reference-image images/person4.png \
+  --prompt "她双手举起，手掌朝向镜头，手指张开，做出一个俏皮的姿势" \
+  --output outputs/pose_edit_2511_4steps.png
+```
 
 ## Examples
 

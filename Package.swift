@@ -39,6 +39,11 @@ let package = Package(
       name: "QwenImageTests",
       dependencies: ["QwenImage"],
       path: "Tests/QwenImageTests"
+    ),
+    .testTarget(
+      name: "QwenImageCLITests",
+      dependencies: ["QwenImageCLI"],
+      path: "Tests/QwenImageCLITests"
     )
   ]
 )

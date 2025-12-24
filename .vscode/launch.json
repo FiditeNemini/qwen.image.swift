@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:qwen.image.swift}",
+            "name": "Debug QwenImageCLI",
+            "target": "QwenImageCLI",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug QwenImageCLI"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:qwen.image.swift}",
+            "name": "Release QwenImageCLI",
+            "target": "QwenImageCLI",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release QwenImageCLI"
+        }
+    ]
+}
