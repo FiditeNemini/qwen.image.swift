@@ -135,11 +135,35 @@ The `examples/` folder contains a few straight-from-the-CLI renders to showcase 
 
 The layered mode decomposes an input image into separate foreground/background layers:
 
-| Input | Layer 1 (background) | Layer 2 (foreground) |
+| Input (480x864) | Layer 1 (background, 480x864) | Layer 2 (foreground, 480x864) |
 | --- | --- | --- |
 | ![Input](images/layered_input.png) | ![Layer 1](examples/layered_layer_1.png) | ![Layer 2](examples/layered_layer_2.png) |
 
 Feel free to reference these prompts to validate your environment; recreating them should produce similar compositions within minor stochastic differences.
+
+### Layered edit
+
+Using the decomposed layers as references to place the subject into a Sydney CBD scene:
+
+```bash
+./QwenImageCLI \
+  --model Qwen/Qwen-Image-Edit-2511 \
+  --true-cfg-scale 1.0 \
+  --guidance 1.0 \
+  --steps 8 \
+  --edit-resolution 1024 \
+  --width 1024 \
+  --height 1024 \
+  --lora Osrivers/Qwen-Image-Edit-Lightning-8steps-V1.0.safetensors \
+  --reference-image examples/layered_layer_1.png \
+  --reference-image examples/layered_layer_2.png \
+  --prompt "Using Picture 2 as the subject, place her naturally into a photo-realistic Sydney, Australia city street scene (Sydney CBD with light rail; subtle Sydney Opera House or Harbour Bridge in the distance). Keep her pose, face, hair, outfit, and flower bag from Picture 2, but ensure she is leaning against a real support (the side of a stopped light-rail tram or a nearby pole/rail) so the contact makes physical sense. Match lighting, perspective, and shadows." \
+  --output examples/sydney_edit_2511.png
+```
+
+| Original input (480x864) | Layer 1 (480x864) | Layer 2 (480x864) | Edited output (1024x1024) |
+| --- | --- | --- | --- |
+| ![Input](images/layered_input.png) | ![Layer 1](examples/layered_layer_1.png) | ![Layer 2](examples/layered_layer_2.png) | ![Sydney edit](examples/sydney_edit_2511.png) |
 
 ## Acknowledgements
 

@@ -22,6 +22,7 @@ public enum SafeTensorsReaderError: Error {
   case invalidOffsets(name: String)
   case invalidShape(name: String)
   case tensorNotFound(String)
+  case emptyTensorData(String)
 }
 
 public final class SafeTensorsReader {
@@ -90,8 +91,12 @@ public final class SafeTensorsReader {
       }
 
       let shape: [Int] = try shapeAny.map { element in
-        if let number = element as? NSNumber {
-          return number.intValue
+        if let intValue = element as? Int {
+          return intValue
+        } else if let int64Value = element as? Int64 {
+          return Int(int64Value)
+        } else if let doubleValue = element as? Double {
+          return Int(doubleValue)
         } else if let string = element as? String, let intValue = Int(string) {
           return intValue
         } else {
@@ -163,16 +168,19 @@ public final class SafeTensorsReader {
       throw SafeTensorsReaderError.tensorNotFound(name)
     }
 
-    return mappedData.withUnsafeBytes { rawBuffer in
-      guard let base = rawBuffer.baseAddress else {
-        fatalError("Expected non-empty tensor data")
-      }
-
+    var result: MLXArray?
+    mappedData.withUnsafeBytes { rawBuffer in
+      guard let base = rawBuffer.baseAddress else { return }
       let startPointer = base.advanced(by: metadata.dataOffset)
       let slicePointer = UnsafeMutableRawPointer(mutating: startPointer)
       let data = Data(bytesNoCopy: slicePointer, count: metadata.byteCount, deallocator: .none)
-      return MLXArray(data, metadata.shape, dtype: metadata.dtype)
+      result = MLXArray(data, metadata.shape, dtype: metadata.dtype)
     }
+
+    guard let tensor = result else {
+      throw SafeTensorsReaderError.emptyTensorData(name)
+    }
+    return tensor
   }
 
   public func tensorData(named name: String) throws -> Data {
@@ -180,14 +188,18 @@ public final class SafeTensorsReader {
       throw SafeTensorsReaderError.tensorNotFound(name)
     }
 
-    return mappedData.withUnsafeBytes { rawBuffer in
-      guard let base = rawBuffer.baseAddress else {
-        return Data()
-      }
+    var result: Data?
+    mappedData.withUnsafeBytes { rawBuffer in
+      guard let base = rawBuffer.baseAddress else { return }
       let startPointer = base.advanced(by: metadata.dataOffset)
       let mutablePointer = UnsafeMutableRawPointer(mutating: startPointer)
-      return Data(bytesNoCopy: mutablePointer, count: metadata.byteCount, deallocator: .none)
+      result = Data(bytesNoCopy: mutablePointer, count: metadata.byteCount, deallocator: .none)
     }
+
+    guard let data = result else {
+      throw SafeTensorsReaderError.emptyTensorData(name)
+    }
+    return data
   }
 
   public func allMetadata() -> [SafeTensorMetadata] {
@@ -195,8 +207,14 @@ public final class SafeTensorsReader {
   }
 
   private static func parseOffset(_ value: Any, tensorName: String) throws -> Int {
-    if let number = value as? NSNumber {
-      return number.intValue
+    if let intValue = value as? Int {
+      return intValue
+    }
+    if let int64Value = value as? Int64 {
+      return Int(int64Value)
+    }
+    if let doubleValue = value as? Double {
+      return Int(doubleValue)
     }
     if let string = value as? String, let intValue = Int(string) {
       return intValue

@@ -50,8 +50,8 @@ public final class QwenLayeredJointAttentionV2: Module {
     imageRotaryEmb: (vid: MLXArray, txt: MLXArray)
   ) -> (MLXArray, MLXArray) {
     let batch = hiddenStates.dim(0)
-    let imgSeq = hiddenStates.dim(1)
-    let txtSeq = encoderHiddenStates.dim(1)
+    let imageSeqLen = hiddenStates.dim(1)
+    let textSeqLen = encoderHiddenStates.dim(1)
 
     var imgQuery = toQ(hiddenStates)
     var imgKey = toK(hiddenStates)
@@ -61,24 +61,24 @@ public final class QwenLayeredJointAttentionV2: Module {
     var txtKey = addKProj(encoderHiddenStates)
     var txtValue = addVProj(encoderHiddenStates)
 
-    imgQuery = imgQuery.reshaped([batch, imgSeq, numHeads, headDim])
-    imgKey = imgKey.reshaped([batch, imgSeq, numHeads, headDim])
-    imgValue = imgValue.reshaped([batch, imgSeq, numHeads, headDim])
+    imgQuery = imgQuery.reshaped([batch, imageSeqLen, numHeads, headDim])
+    imgKey = imgKey.reshaped([batch, imageSeqLen, numHeads, headDim])
+    imgValue = imgValue.reshaped([batch, imageSeqLen, numHeads, headDim])
 
-    txtQuery = txtQuery.reshaped([batch, txtSeq, numHeads, headDim])
-    txtKey = txtKey.reshaped([batch, txtSeq, numHeads, headDim])
-    txtValue = txtValue.reshaped([batch, txtSeq, numHeads, headDim])
+    txtQuery = txtQuery.reshaped([batch, textSeqLen, numHeads, headDim])
+    txtKey = txtKey.reshaped([batch, textSeqLen, numHeads, headDim])
+    txtValue = txtValue.reshaped([batch, textSeqLen, numHeads, headDim])
 
     imgQuery = normQ(imgQuery)
     imgKey = normK(imgKey)
     txtQuery = normAddedQ(txtQuery)
     txtKey = normAddedK(txtKey)
 
-    let (vidFreqs, txtFreqs) = imageRotaryEmb
-    imgQuery = applyRotaryEmbQwen(imgQuery, freqs: vidFreqs)
-    imgKey = applyRotaryEmbQwen(imgKey, freqs: vidFreqs)
-    txtQuery = applyRotaryEmbQwen(txtQuery, freqs: txtFreqs)
-    txtKey = applyRotaryEmbQwen(txtKey, freqs: txtFreqs)
+    let (imageFreqs, textFreqs) = imageRotaryEmb
+    imgQuery = applyRotaryEmbQwen(imgQuery, freqs: imageFreqs)
+    imgKey = applyRotaryEmbQwen(imgKey, freqs: imageFreqs)
+    txtQuery = applyRotaryEmbQwen(txtQuery, freqs: textFreqs)
+    txtKey = applyRotaryEmbQwen(txtKey, freqs: textFreqs)
 
     // Text first, then image for joint attention
     var jointQuery = MLX.concatenated([txtQuery, imgQuery], axis: 1)
@@ -99,10 +99,10 @@ public final class QwenLayeredJointAttentionV2: Module {
     )
 
     attnOutput = attnOutput.transposed(0, 2, 1, 3)
-    attnOutput = attnOutput.reshaped([batch, txtSeq + imgSeq, innerDim])
+    attnOutput = attnOutput.reshaped([batch, textSeqLen + imageSeqLen, innerDim])
 
-    let txtAttnOutput = attnOutput[0..., 0..<txtSeq, 0...]
-    let imgAttnOutput = attnOutput[0..., txtSeq..., 0...]
+    let txtAttnOutput = attnOutput[0..., 0..<textSeqLen, 0...]
+    let imgAttnOutput = attnOutput[0..., textSeqLen..., 0...]
 
     let imgOutput = toOut[0](imgAttnOutput)
     let txtOutput = toAddOut(txtAttnOutput)

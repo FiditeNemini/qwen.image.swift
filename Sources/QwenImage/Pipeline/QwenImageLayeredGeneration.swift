@@ -342,37 +342,33 @@ public class QwenLayeredPipeline {
 
     logger.info("Input: \(inputWidth)x\(inputHeight), target: \(targetWidth)x\(targetHeight)")
 
-    // Resize image
     var resizedImage = image
-    logger.info("Input image shape: \(image.shape), ndim: \(image.ndim)")
+    logger.debug("Input image shape: \(image.shape), ndim: \(image.ndim)")
     if image.ndim == 5 {
       resizedImage = image.squeezed(axis: 2)
-      logger.info("After squeeze: \(resizedImage.shape)")
+      logger.debug("After squeeze: \(resizedImage.shape)")
     }
     if inputWidth != targetWidth || inputHeight != targetHeight {
       resizedImage = resizeImageLayered(resizedImage, targetHeight: targetHeight, targetWidth: targetWidth)
-      logger.info("After resize: \(resizedImage.shape)")
+      logger.debug("After resize: \(resizedImage.shape)")
     }
 
     let height = targetHeight
     let width = targetWidth
 
-    // Encode image to latent space
-    logger.info("Encoding image to latent space, shape: \(resizedImage.shape)")
+    logger.debug("Encoding image to latent space, shape: \(resizedImage.shape)")
     let (rawLatent, _, _) = vae.encodeRaw(resizedImage)
     let imageLatent = QwenVAE.normalizeLatent(rawLatent)
 
     let latentHeight = height / vaeScaleFactor
     let latentWidth = width / vaeScaleFactor
 
-    // Compute mu for dynamic shifting
     let halfH = latentHeight / patchSize
     let halfW = latentWidth / patchSize
     let imageSeqLen = Float(halfH * halfW)
     let baseSeqLen: Float = 256.0
     let mu = sqrt(imageSeqLen / baseSeqLen)
 
-    // Create scheduler
     let scheduler = QwenFlowMatchScheduler(
       numInferenceSteps: parameters.numInferenceSteps,
       width: width,
@@ -381,24 +377,21 @@ public class QwenLayeredPipeline {
       mu: mu
     )
 
-    // Generate noise for layers
     let noiseShape = [batchSize, layers + 1, latentChannels, latentHeight, latentWidth]
     let layerNoise = MLXRandom.normal(noiseShape).asType(imageLatent.dtype)
     var latents = LatentPacking.pack(layerNoise)
-    logger.info("Noise latents shape: \(latents.shape)")
+    logger.debug("Noise latents shape: \(latents.shape)")
 
-    // Pack image latent
     let imageLatent4D: MLXArray
     if imageLatent.ndim == 5 {
       imageLatent4D = imageLatent.squeezed(axis: 2)
     } else {
       imageLatent4D = imageLatent
     }
-    logger.info("Image latent 4D shape: \(imageLatent4D.shape)")
+    logger.debug("Image latent 4D shape: \(imageLatent4D.shape)")
     let packedImageLatent = LatentPacking.packSingle(imageLatent4D)
-    logger.info("Packed image latent shape: \(packedImageLatent.shape)")
+    logger.debug("Packed image latent shape: \(packedImageLatent.shape)")
 
-    // Encode prompt (text encoder is always required)
     guard textEncoder != nil, tokenizer != nil else {
       throw LayeredPipelineError.componentsNotLoaded
     }
@@ -407,7 +400,6 @@ public class QwenLayeredPipeline {
     let promptEmbeds = encoded.embeddings
     let promptMask = encoded.mask
 
-    // Build imgShapes for RoPE
     var imgShapes: [[(Int, Int, Int)]] = []
     for _ in 0..<batchSize {
       var shapes: [(Int, Int, Int)] = []
@@ -420,7 +412,6 @@ public class QwenLayeredPipeline {
     let txtSeqLens = [Int](repeating: promptEmbeds.dim(1), count: batchSize)
     let additionalTCond = MLXArray.zeros([batchSize]).asType(.int32)
 
-    // Handle True CFG
     let doTrueCFG = parameters.trueCFGScale > 1.0 && parameters.negativePrompt != nil
     var negativePromptEmbeds: MLXArray? = nil
     var negativePromptMask: MLXArray? = nil
@@ -436,10 +427,8 @@ public class QwenLayeredPipeline {
 
     logger.info("Starting denoising with \(parameters.numInferenceSteps) steps")
 
-    // Denoising loop
     for i in 0..<parameters.numInferenceSteps {
       let latentInput = MLX.concatenated([latents, packedImageLatent], axis: 1)
-      // Keep sigma on-device to avoid GPU→CPU sync every step
       let sigma = scheduler.sigmas[i]
       let timestepExpanded = MLX.full([batchSize], values: sigma).asType(latents.dtype)
 
@@ -453,10 +442,8 @@ public class QwenLayeredPipeline {
         additionalTCond: additionalTCond
       )
 
-      // Extract only the layer patches
       noisePred = noisePred[0..., 0..<latents.dim(1), 0...]
 
-      // Apply True CFG if enabled
       if doTrueCFG, let negEmbeds = negativePromptEmbeds, let negMask = negativePromptMask, let negTxtSeqLens = negativeTxtSeqLens {
         var negNoisePred = transformer(
           hiddenStates: latentInput,
@@ -488,7 +475,6 @@ public class QwenLayeredPipeline {
       progress?(i, parameters.numInferenceSteps, progressFraction)
     }
 
-    // Unpack and decode layers
     logger.info("Decoding layers")
     var unpackedLatents = LatentPacking.unpack(
       latents,
@@ -497,16 +483,12 @@ public class QwenLayeredPipeline {
       width: latentWidth
     )
 
-    // Denormalize the full 5D tensor FIRST, matching the working implementation
-    // unpackedLatents shape: [B, L+1, C, H, W]
+    // Denormalize before decoding (matches Python pipeline behavior)
     unpackedLatents = QwenVAE.denormalizeLatent(unpackedLatents)
 
-    // We only decode layers 1 through L (skip index 0 which is the original)
     var decodedLayers: [MLXArray] = []
     for l in 1...layers {
-      // Extract layer latent: [B, C, H, W] - already denormalized
       let layerLatent = unpackedLatents[0..., l, 0..., 0..., 0...]
-      // Pass directly to decode - no additional denormalization needed
       let decoded = vae.decode(layerLatent)
       decodedLayers.append(decoded)
     }

@@ -735,11 +735,10 @@ extension QwenTextEncoder {
         let src = cursor * hiddenDim
         rowValues.withUnsafeMutableBufferPointer { destPtr in
           replacementValues.withUnsafeBufferPointer { srcPtr in
-            memcpy(
-              destPtr.baseAddress! + dest,
-              srcPtr.baseAddress! + src,
-              hiddenDim * MemoryLayout<Float32>.size
-            )
+            guard let destBase = destPtr.baseAddress, let srcBase = srcPtr.baseAddress else {
+              preconditionFailure("Buffer pointers must not be empty")
+            }
+            memcpy(destBase + dest, srcBase + src, hiddenDim * MemoryLayout<Float32>.size)
           }
         }
         cursor += 1

@@ -123,10 +123,7 @@ struct QwenImageCLIEntry {
     var quantAttnMode: QuantizationMode?
     var quantAttnSpecOverride: QwenQuantizationSpec?
     var quantMinDim = 4096
-    var quantizeSnapshotOut: String?
     var quantizeComponents: [String] = ["transformer", "text_encoder"]
-    var pythonCmd: String? = nil
-    var quantizeScriptPath: String? = nil
     var quantizeSnapshotSwiftOut: String?
 
     // Layered generation mode
@@ -253,17 +250,11 @@ struct QwenImageCLIEntry {
         default:
           fail("Unsupported quantization mode \(value). Use affine or mxfp4.")
         }
-      case "--quantize-snapshot-out":
-        quantizeSnapshotOut = nextValue(for: argument, iterator: &iterator)
       case "--quantize-model":
         quantizeSnapshotSwiftOut = nextValue(for: argument, iterator: &iterator)
       case "--quantize-components":
         let value = nextValue(for: argument, iterator: &iterator)
         quantizeComponents = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-      case "--python":
-        pythonCmd = nextValue(for: argument, iterator: &iterator)
-      case "--quantize-script":
-        quantizeScriptPath = nextValue(for: argument, iterator: &iterator)
       case "--layered":
         isLayeredMode = true
       case "--layered-image":
@@ -349,41 +340,13 @@ struct QwenImageCLIEntry {
         offlineMode: false,
         useBackgroundSession: false
       )
-      try runQuantizeSnapshotSwift(
-        modelPath: resolvedSnapshot.path,
-        outputPath: outDir,
-        components: quantizeComponents,
-        bits: quantBits ?? 8,
-        groupSize: quantGroupSize,
-        mode: quantMode
-      )
-      return
-    }
-
-    if let outDir = quantizeSnapshotOut {
-      guard let modelValue = modelArg else {
-        fail("--quantize-snapshot-out requires --model to point at a local snapshot directory or HF repo id.")
-      }
-      let env = ProcessInfo.processInfo.environment
-      let hfHomePath = env["HF_HOME"].map { NSString(string: $0).expandingTildeInPath }
-      let cacheOverridePath: String? = hfHomePath.map { $0 + "/hub" }
-      let resolvedSnapshot = try resolveSnapshot(
-        model: modelValue,
-        revision: revision,
-        cacheDirectory: cacheOverridePath,
-        hfToken: nil,
-        offlineMode: false,
-        useBackgroundSession: false
-      )
       try runQuantizeSnapshot(
         modelPath: resolvedSnapshot.path,
         outputPath: outDir,
         components: quantizeComponents,
         bits: quantBits ?? 8,
         groupSize: quantGroupSize,
-        mode: quantMode,
-        pythonCmd: pythonCmd,
-        scriptPath: quantizeScriptPath
+        mode: quantMode
       )
       return
     }
@@ -826,8 +789,7 @@ struct QwenImageCLIEntry {
     loraPath: String?
   ) throws {
 #if canImport(CoreGraphics)
-    // Set GPU cache limit higher for layered generation
-    let cacheLimitBytes = 64 * 1024 * 1024 * 1024
+    let cacheLimitBytes = 2 * 1024 * 1024 * 1024
     MLX.GPU.set(cacheLimit: cacheLimitBytes)
     logger.info("Set MLX GPU cache limit to \(ByteCountFormatter.string(fromByteCount: Int64(cacheLimitBytes), countStyle: .memory)) for layered generation")
 
@@ -958,18 +920,15 @@ struct QwenImageCLIEntry {
     pixels = pixels * 0.5 + 0.5
     pixels = MLX.clip(pixels, min: 0, max: 1)
     pixels = (pixels * 255).asType(.uint8)
-    MLX.eval(pixels)
 
     let channels = pixels.dim(0)
     let height = pixels.dim(1)
     let width = pixels.dim(2)
 
-    // Transpose from [C, H, W] to [H, W, C]
     pixels = pixels.transposed(1, 2, 0)
-    MLX.eval(pixels)
 
-    // Get raw bytes
     let flatArray = pixels.reshaped([-1])
+    MLX.eval(flatArray)
     let count = Int(flatArray.size)
     var byteData = [UInt8](repeating: 0, count: count)
     flatArray.asData().withUnsafeBytes { ptr in
@@ -1032,85 +991,6 @@ struct QwenImageCLIEntry {
     components: [String],
     bits: Int,
     groupSize: Int,
-    mode: QuantizationMode,
-    pythonCmd: String?,
-    scriptPath: String?
-  ) throws {
-    let snapshotURL = URL(fileURLWithPath: modelPath)
-    let outputURL = URL(fileURLWithPath: outputPath)
-    try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
-
-    let scriptURL: URL
-    if let scriptPath {
-      scriptURL = URL(fileURLWithPath: scriptPath).standardizedFileURL
-    } else {
-      scriptURL = URL(fileURLWithPath: "quantize_unet_snapshot.py").standardizedFileURL
-    }
-    let scriptPathResolved = scriptURL.path
-    let py = pythonCmd ?? "python3"
-    var args: [String] = []
-    args.append(contentsOf: [py, scriptPathResolved, "--snapshot", snapshotURL.path, "--output", outputURL.path])
-    args.append(contentsOf: ["--group-size", String(groupSize), "--bits", String(bits)])
-    switch mode {
-    case .mxfp4: args.append(contentsOf: ["--mode", "mxfp4"]) 
-    default: args.append(contentsOf: ["--mode", "affine"]) 
-    }
-    for comp in components { args.append(contentsOf: ["--component", comp]) }
-    args.append("--no-dry-run")
-
-    let fullCmd: [String]
-    if pythonCmd?.contains(" ") ?? false {
-      let parts = pythonCmd!.split(separator: " ").map(String.init)
-      let modeArg = mode == .mxfp4 ? "mxfp4" : "affine"
-      let componentArgs = components.flatMap { ["--component", $0] }
-      fullCmd = parts
-        + [
-          scriptPathResolved,
-          "--snapshot", snapshotURL.path,
-          "--output", outputURL.path,
-          "--group-size", String(groupSize),
-          "--bits", String(bits),
-          "--mode", modeArg
-        ]
-        + componentArgs
-        + ["--no-dry-run"]
-    } else {
-      fullCmd = args
-    }
-
-    logger.info("Quantizing snapshot (bits=\(bits), group=\(groupSize), mode=\(mode), components=\(components.joined(separator: ",")))")
-    let (status, stdout, stderr) = runProcess(command: fullCmd)
-    if status != 0 {
-      logger.error("Quantizer failed (exit=\(status))\nSTDOUT:\n\(stdout)\nSTDERR:\n\(stderr)")
-      fail("Quantizer failed with status \(status)")
-    }
-    logger.info("Quantized snapshot written to \(outputURL.path). Use --model \(outputURL.path) in subsequent runs.")
-  }
-
-  @discardableResult
-  private static func runProcess(command: [String]) -> (Int32, String, String) {
-    let task = Process()
-    task.standardOutput = Pipe()
-    task.standardError = Pipe()
-    task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    task.arguments = command
-    do { try task.run() } catch {
-      return (127, "", String(describing: error))
-    }
-    let outData = (task.standardOutput as! Pipe).fileHandleForReading.readDataToEndOfFile()
-    let errData = (task.standardError as! Pipe).fileHandleForReading.readDataToEndOfFile()
-    task.waitUntilExit()
-    let stdout = String(data: outData, encoding: .utf8) ?? ""
-    let stderr = String(data: errData, encoding: .utf8) ?? ""
-    return (task.terminationStatus, stdout, stderr)
-  }
-
-  private static func runQuantizeSnapshotSwift(
-    modelPath: String,
-    outputPath: String,
-    components: [String],
-    bits: Int,
-    groupSize: Int,
     mode: QuantizationMode
   ) throws {
     let snapshotURL = URL(fileURLWithPath: modelPath)
@@ -1142,17 +1022,28 @@ struct QwenImageCLIEntry {
       allowedMapHF[comp] = out
     }
     try SwiftQuantSaver.quantizeAndSave(from: snapshotURL, to: outputURL, components: components, spec: spec, allowedLayerMap: allowedMapHF)
-    let rsyncCmd = [
-      "rsync", "-aL",
-      "--exclude", "transformer",
-      "--exclude", "text_encoder",
-      "--exclude", "quantization.json",
-      snapshotURL.path + "/",
-      outputURL.path + "/"
-    ]
-    let (rc, out, err) = runProcess(command: rsyncCmd)
-    if rc != 0 {
-      logger.warning("Ancillary copy via rsync failed (exit=\(rc)): \(err)\n\(out)")
+
+    let excludedDirs: Set<String> = ["transformer", "text_encoder"]
+    let excludedFiles: Set<String> = ["quantization.json"]
+    let fm = FileManager.default
+    if let enumerator = fm.enumerator(at: snapshotURL, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
+      for case let fileURL as URL in enumerator {
+        let relativePath = fileURL.path.replacingOccurrences(of: snapshotURL.path + "/", with: "")
+        let firstComponent = relativePath.split(separator: "/").first.map(String.init) ?? relativePath
+        if excludedDirs.contains(firstComponent) || excludedFiles.contains(relativePath) {
+          continue
+        }
+        let destURL = outputURL.appendingPathComponent(relativePath)
+        let isDir = (try? fileURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+        if isDir {
+          try? fm.createDirectory(at: destURL, withIntermediateDirectories: true)
+        } else {
+          try? fm.createDirectory(at: destURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+          if !fm.fileExists(atPath: destURL.path) {
+            try? fm.copyItem(at: fileURL, to: destURL)
+          }
+        }
+      }
     }
     logger.info("Swift quantized snapshot written to \(outputURL.path)")
   }
