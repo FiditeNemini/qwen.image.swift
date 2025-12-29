@@ -2,7 +2,11 @@
 
 Swift port of Qwen Image runs on Apple Silicon Macs using **[mlx-swift](https://github.com/ml-explore/mlx-swift)**.
 
-## Release CLI
+## Try it
+
+Download the app: **[QwenImageApp.dmg](https://github.com/mzbac/qwen.image.swift/releases/download/0.1.2/QwenImageApp.dmg)**
+
+## CLI
 
 The CLI can run on a 32 GB machine by using 8-bit quantized model weights pulled from Hugging Face.
 
