@@ -183,7 +183,9 @@ public actor ImagePipelineSession {
 
     logger.debug("Cache miss, encoding prompt")
 
-    // Encode and cache
+    try pipeline.reloadTokenizer()
+    try pipeline.reloadTextEncoder()
+
     let encoding = try pipeline.encodeGuidancePrompts(
       prompt: prompt,
       negativePrompt: negativePrompt,

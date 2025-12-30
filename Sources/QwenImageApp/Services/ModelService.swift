@@ -97,7 +97,8 @@ actor ModelService {
     let repoId = "lightx2v/Qwen-Image-Edit-2511-Lightning"
     let options = HubSnapshotOptions(
       repoId: repoId,
-      revision: "main"
+      revision: "main",
+      patterns: ["Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"]
     )
 
     let snapshot = try HubSnapshot(options: options)
@@ -188,7 +189,6 @@ actor ModelService {
     let pipeline = QwenImagePipeline(config: config)
     pipeline.setBaseDirectory(path)
     try pipeline.prepareTokenizer(from: path, maxLength: nil)
-    try pipeline.prepareTextEncoder(from: path)
     try pipeline.prepareVAE(from: path)
 
     imagePipeline = pipeline
@@ -237,9 +237,7 @@ actor ModelService {
 
     let pipeline = QwenImagePipeline(config: config)
     pipeline.setBaseDirectory(path)
-
     try pipeline.prepareTokenizer(from: path, maxLength: nil)
-    try pipeline.prepareTextEncoder(from: path)
     try pipeline.prepareVAE(from: path)
 
     imagePipeline = pipeline

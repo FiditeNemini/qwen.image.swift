@@ -958,6 +958,8 @@ public final class QwenImagePipeline {
 
     MLX.eval(embeddings, attentionMask)
 
+    releaseTextEncoder()
+
     try ensureUNetAndVAE(model: model)
 
     var latents = try makeInitialLatents(
@@ -1028,6 +1030,8 @@ public final class QwenImagePipeline {
     let attentionMask = stacked.attentionMask.asType(.int32)
 
     MLX.eval(embeddings, attentionMask)
+
+    releaseTextEncoder()
 
     try ensureUNetAndVAE(model: model)
 
@@ -1125,6 +1129,8 @@ public final class QwenImagePipeline {
       guidanceEncoding.conditionalMask
     )
 
+    releaseEncoders()
+
     try ensureUNetAndVAE(model: model)
 
     let latents = try makeInitialLatents(
@@ -1214,6 +1220,8 @@ public final class QwenImagePipeline {
       guidanceEncoding.unconditionalMask,
       guidanceEncoding.conditionalMask
     )
+
+    releaseEncoders()
 
     try ensureUNetAndVAE(model: model)
 

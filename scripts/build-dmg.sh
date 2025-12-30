@@ -21,6 +21,7 @@ cp QwenImageApp QwenImageApp.app/Contents/MacOS/
 chmod +x QwenImageApp.app/Contents/MacOS/QwenImageApp
 
 cp "$PROJECT_DIR/Resources/Info.plist" QwenImageApp.app/Contents/
+cp "$PROJECT_DIR/Resources/AppIcon.icns" QwenImageApp.app/Contents/Resources/
 cp -r mlx-swift_Cmlx.bundle QwenImageApp.app/Contents/Resources/
 
 echo ""
