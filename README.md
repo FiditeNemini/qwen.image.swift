@@ -4,7 +4,7 @@ Swift port of Qwen Image runs on Apple Silicon Macs using **[mlx-swift](https://
 
 ## Try it
 
-Download the app: **[QwenImageApp.dmg](https://github.com/mzbac/qwen.image.swift/releases/download/0.1.2/QwenImageApp.dmg)**
+Download the app: **[QwenImageApp.dmg](https://github.com/mzbac/qwen.image.swift/releases/latest/download/QwenImageApp.dmg)**
 
 ## CLI
 
